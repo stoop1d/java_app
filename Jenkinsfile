@@ -2,9 +2,9 @@ pipeline {
   agent any
 
   environment {
-    KUBECONFIG = '/var/lib/jenkins/microk8s.kubeconfig'   // уже на сервере
+    KUBECONFIG = '/var/lib/jenkins/microk8s.kubeconfig'
     IMAGE_NAME = "stoop1dk4/java_app"
-    IMAGE_TAG = "latest" // можно заменить на ${env.BUILD_NUMBER}
+    IMAGE_TAG  = "latest" // можно заменить на "${env.BUILD_NUMBER}" для версионирования
   }
 
   stages {
@@ -18,30 +18,33 @@ pipeline {
 
     stage('Build (Maven)') {
       steps {
-        dir('') {
-          sh 'mvn -B -DskipTests package'
-        }
+        // workspace root is java_app repo root (pom.xml here)
+        sh 'mvn -B -DskipTests package'
       }
     }
 
-    stage('Build Docker & Push') {
+    stage('Build & Push Docker') {
       steps {
         script {
-          // build in project dir, tag as latest
+          // build from repo root (Dockerfile in repo root)
           docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-creds') {
-            def built = docker.build("${IMAGE_NAME}:${IMAGE_TAG}", ".")
-            built.push()
+            def img = docker.build("${IMAGE_NAME}:${IMAGE_TAG}", ".")
+            img.push()
           }
         }
       }
     }
 
-    stage('Deploy to microk8s') {
+    stage('Deploy to Kubernetes') {
       steps {
+        // apply manifests located in ./k8s
         sh '''
-          # apply k8s in namespace apps
-          kubectl --kubeconfig="${KUBECONFIG}" apply -f deployment.yml
-          # wait a bit and show pods
+          kubectl --kubeconfig="${KUBECONFIG}" apply -f k8s/deployment.yml
+          kubectl --kubeconfig="${KUBECONFIG}" apply -f k8s/service.yml
+          # ingress optional
+          if [ -f k8s/ingress.yml ]; then
+            kubectl --kubeconfig="${KUBECONFIG}" apply -f k8s/ingress.yml || true
+          fi
           kubectl --kubeconfig="${KUBECONFIG}" -n apps get pods -l app=java-app -o wide
         '''
       }
@@ -51,7 +54,7 @@ pipeline {
   post {
     success { echo "Pipeline succeeded" }
     failure { echo "Pipeline failed" }
-    always { echo "Done" }
+    always { echo "Pipeline finished" }
   }
 }
 
