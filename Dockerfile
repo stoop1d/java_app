@@ -6,7 +6,7 @@ COPY src ./src
 RUN mvn clean package -DskipTests
 
 # --- Stage 2: runtime ---
-FROM openjdk:21-jdk
+FROM eclipse-temurin:21-jdk
 WORKDIR /app
 COPY --from=build /app/target/demoapp-1.0.0.jar ./demoapp.jar
 EXPOSE 8081
